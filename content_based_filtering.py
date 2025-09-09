@@ -1,0 +1,294 @@
+# %% [markdown]
+# # Content-Based Filtering for Movie Recommendations
+
+# %% [markdown]
+# ## Introduction
+# This notebook demonstrates content-based filtering, a type of recommender system that suggests items based on their attributes. We will use a dataset of movies and their genres to build a system that recommends movies similar to a user's choice.
+# 
+# We will cover two main parts:
+# 1.  **Calculate**: Using TF-IDF to represent movie genres and Cosine Similarity to find similar movies.
+# 2.  **Visualize**: Visualizing the movie data in a 2D space to understand the relationships between them.
+
+# %%
+# Import necessary libraries
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.decomposition import PCA
+import plotly.express as px
+import plotly.graph_objects as go
+
+# %% [markdown]
+# ## 1. Load and Prepare the Data
+# We start by loading the `movies.csv` dataset and preparing it for analysis.
+
+# %%
+# Load the movies dataset
+movies_df = pd.read_csv('data/movie/movies.csv')
+
+# Display the first few rows of the dataframe
+print("Original Movies DataFrame:")
+print(movies_df.head())
+
+# For this content-based filter, we only need the movieId, title, and genres.
+movies_df = movies_df[['movieId', 'title', 'genres']]
+
+# The genres are listed as a string with '|' as a separator. 
+# We will replace the '|' with spaces to treat the genres as a single string of words.
+movies_df['genres'] = movies_df['genres'].str.replace('|', ' ', regex=True)
+
+# Display the first few rows of the modified dataframe
+print("\nModified Movies DataFrame:")
+print(movies_df.head())
+
+# %% [markdown]
+# ## 2. Calculate: TF-IDF and Cosine Similarity
+
+# %% [markdown]
+# ### TF-IDF Vectorization
+# We will use Term Frequency-Inverse Document Frequency (TF-IDF) to convert the text-based genre data into a numerical format that can be used for calculations. Each movie's genres will be represented as a vector.
+
+# %%
+# Initialize the TF-IDF Vectorizer
+# We use stop_words='english' to remove common English words that don't add much meaning.
+tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+
+# Fit and transform the genres column to create the TF-IDF matrix
+tfidf_matrix = tfidf_vectorizer.fit_transform(movies_df['genres'])
+
+# The tfidf_matrix is a sparse matrix where each row represents a movie and each column represents a genre term.
+print("\nShape of TF-IDF Matrix:")
+print(tfidf_matrix.shape)
+
+# %% [markdown]
+# ### Cosine Similarity
+# Now that we have the TF-IDF matrix, we can calculate the cosine similarity between all pairs of movies. The resulting matrix will show how similar each movie is to every other movie.
+
+# %%
+# Calculate the cosine similarity matrix
+cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+print("\nShape of Cosine Similarity Matrix:")
+print(cosine_sim.shape)
+
+# %% [markdown]
+# ### Create a Recommendation Function
+# We will create a function that takes a movie title as input and returns a list of the most similar movies.
+
+# %%
+# Create a function to get movie recommendations
+def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df):
+    # Get the index of the movie that matches the title
+    try:
+        idx = movies_df[movies_df['title'] == title].index[0]
+    except IndexError:
+        return f"Movie with title '{title}' not found."
+
+    # Get the pairwise similarity scores of all movies with that movie
+    sim_scores = list(enumerate(cosine_sim[idx]))
+
+    # Sort the movies based on the similarity scores
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+
+    # Get the scores of the 10 most similar movies
+    sim_scores = sim_scores[1:11]
+
+    # Get the movie indices
+    movie_indices = [i[0] for i in sim_scores]
+
+    # Return the top 10 most similar movies
+    return movies_df['title'].iloc[movie_indices]
+
+# %% [markdown]
+# ### Test the Recommendation System
+# Let's test our recommendation system with a few examples.
+
+# %%
+# Get recommendations for 'Toy Story (1995)'
+print("\nRecommendations for 'Toy Story (1995)':")
+print(get_recommendations('Toy Story (1995)'))
+
+# Get recommendations for 'Jumanji (1995)'
+print("\nRecommendations for 'Jumanji (1995)':")
+print(get_recommendations('Jumanji (1995)'))
+
+# %% [markdown]
+# ## 3. Visualize: Visualizing Movie Similarities
+# To better understand the relationships between movies, we can visualize the TF-IDF vectors in a 2D space. We'll use Principal Component Analysis (PCA) to reduce the dimensionality of the TF-IDF matrix.
+
+# %%
+# Reduce the dimensionality of the TF-IDF matrix using PCA
+pca = PCA(n_components=2)
+tfidf_matrix_2d = pca.fit_transform(tfidf_matrix.toarray())
+
+# Create a new DataFrame for the 2D data
+movies_2d_df = pd.DataFrame(tfidf_matrix_2d, columns=['x', 'y'])
+movies_2d_df['title'] = movies_df['title']
+movies_2d_df['genres'] = movies_df['genres']
+
+# %% [markdown]
+# ### Interactive 2D Plot with Plotly
+# Now, we'll create an interactive scatter plot using Plotly. You can hover over the points to see the movie titles and genres.
+
+# %%
+# Create an interactive scatter plot
+fig = px.scatter(movies_2d_df, x='x', y='y',
+                 hover_name='title',
+                 hover_data=['genres'],
+                 title='2D Representation of Movies based on Genres (TF-IDF + PCA)')
+
+# Improve the layout
+fig.update_layout(
+    xaxis_title="PCA Component 1",
+    yaxis_title="PCA Component 2",
+    title={
+        'text': "2D Representation of Movies based on Genres",
+        'y':0.95,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'
+    }
+)
+
+# Show the plot
+fig.show()
+
+# %% [markdown]
+# ## 4. Evaluation
+# To evaluate our content-based recommender, we can measure the diversity of the recommendations. A good recommender should not only be accurate but also provide a diverse set of items.
+# 
+# ### Intra-List Similarity
+# Intra-list similarity measures how similar the recommended items are to each other. A lower value means the recommendations are more diverse. We calculate it by averaging the cosine similarity between all pairs of items in the recommendation list.
+
+# %%
+def calculate_intra_list_similarity(recommendations, cosine_sim=cosine_sim, movies_df=movies_df):
+    """
+    Calculates the average similarity between all pairs of items in a recommendation list.
+    """
+    # Get indices of recommended movies
+    rec_indices = movies_df[movies_df['title'].isin(recommendations)].index
+    
+    # If there are less than 2 recommendations, diversity is not applicable
+    if len(rec_indices) < 2:
+        return 0.0
+        
+    total_similarity = 0
+    pair_count = 0
+    
+    # Iterate through all pairs of recommended movies
+    for i in range(len(rec_indices)):
+        for j in range(i + 1, len(rec_indices)):
+            idx1 = rec_indices[i]
+            idx2 = rec_indices[j]
+            
+            # Add the similarity score to the total
+            total_similarity += cosine_sim[idx1][idx2]
+            pair_count += 1
+            
+    # Return the average similarity
+    return total_similarity / pair_count if pair_count > 0 else 0.0
+
+# %% [markdown]
+# ### Evaluate Recommendations for 'Toy Story (1995)'
+
+# %%
+# Get recommendations for 'Toy Story (1995)'
+toy_story_recs = get_recommendations('Toy Story (1995)')
+print("Recommendations for 'Toy Story (1995)':")
+print(toy_story_recs)
+
+# Calculate and print the intra-list similarity
+ils_toy_story = calculate_intra_list_similarity(toy_story_recs)
+print(f"\nIntra-List Similarity for 'Toy Story (1995)' recommendations: {ils_toy_story:.4f}")
+print("A lower score indicates more diverse recommendations.")
+
+# %% [markdown]
+# ### Evaluate Recommendations for 'Jumanji (1995)'
+
+# %%
+# Get recommendations for 'Jumanji (1995)'
+jumanji_recs = get_recommendations('Jumanji (1995)')
+print("\nRecommendations for 'Jumanji (1995)':")
+print(jumanji_recs)
+
+# Calculate and print the intra-list similarity
+ils_jumanji = calculate_intra_list_similarity(jumanji_recs)
+print(f"\nIntra-List Similarity for 'Jumanji (1995)' recommendations: {ils_jumanji:.4f}")
+print("A lower score indicates more diverse recommendations.")
+
+# %% [markdown]
+# ### Precision and Recall @k
+# To calculate precision and recall, we need a "ground truth" of relevant items for a user. We will simulate this by using the `ratings.csv` dataset.
+# 
+# - **Precision@k**: What percentage of our top-k recommendations are relevant to the user?
+# - **Recall@k**: What percentage of all the user's relevant items did we recommend in our top-k list?
+# 
+# **A Note on Accuracy**: Accuracy is not a good metric for top-N recommender systems. A recommender suggests a small number of items from a very large pool. If we treated all non-recommended items as "correctly not recommended" (true negatives), we would get a very high but misleading accuracy score. Therefore, we focus on precision and recall.
+
+# %%
+# Load the ratings dataset to get user preferences
+ratings_df = pd.read_csv('data/movie/ratings.csv')
+print("\nRatings DataFrame:")
+print(ratings_df.head())
+
+# %% [markdown]
+# #### Simulating a User for Evaluation
+# We will select a sample user and use their highly-rated movies as the ground truth. We'll then take one of their favorite movies, generate recommendations for it, and see how many of the other favorites we can predict.
+
+# %%
+# Let's pick a sample user (e.g., user with userId = 1)
+user_id = 1
+user_ratings = ratings_df[ratings_df['userId'] == user_id]
+
+# Get the movies this user has rated highly (e.g., rating >= 4.0)
+relevant_movies = user_ratings[user_ratings['rating'] >= 4.0]
+
+# Merge with movies_df to get titles
+relevant_movies_titles = movies_df.merge(relevant_movies, on='movieId')['title']
+
+# Let's use one of the user's favorite movies as a seed for recommendations
+# We'll pick the first one from their list
+seed_movie_title = relevant_movies_titles.iloc[0]
+
+print(f"\nSeed movie for user {user_id}: '{seed_movie_title}'")
+print(f"\nUser {user_id}'s other favorite movies (ground truth):")
+# The ground truth is all relevant movies except the seed movie itself
+ground_truth = set(relevant_movies_titles) - {seed_movie_title}
+print(ground_truth)
+
+
+# %%
+# Get recommendations for the seed movie
+recommendations = get_recommendations(seed_movie_title)
+print(f"\nTop 10 recommendations for '{seed_movie_title}':")
+print(recommendations.tolist())
+
+# %%
+def calculate_precision_recall(recommendations, ground_truth):
+    """
+    Calculates Precision@k and Recall@k.
+    """
+    # Convert recommendations to a set for faster intersection
+    rec_set = set(recommendations)
+    
+    # Calculate the number of relevant items in the recommendations
+    true_positives = len(rec_set.intersection(ground_truth))
+    
+    # Precision@k = (True Positives) / (Number of Recommendations)
+    precision = true_positives / len(rec_set) if rec_set else 0.0
+    
+    # Recall@k = (True Positives) / (Total Number of Relevant Items)
+    recall = true_positives / len(ground_truth) if ground_truth else 0.0
+    
+    return precision, recall
+
+# Calculate and print precision and recall
+precision, recall = calculate_precision_recall(recommendations, ground_truth)
+print(f"\nPrecision@10: {precision:.4f}")
+print(f"Recall@10: {recall:.4f}")
+print("\nThis means that {:.0f}% of the recommendations were relevant to the user, and we were able to recall {:.0f}% of all their favorite movies.".format(precision*100, recall*100))
+
+# %% [markdown]
+# ## Conclusion
+# This notebook provided a step-by-step guide to building a content-based filtering recommender system. We used TF-IDF and cosine similarity to find similar movies and visualized the results using PCA and Plotly. This approach can be extended by incorporating more features (like actors, directors) or by using more advanced techniques for feature representation.
+# We also added evaluation metrics, including intra-list similarity to assess diversity, and precision and recall to measure the relevance of our recommendations.
