@@ -53,8 +53,8 @@ Collaborative filtering relies on the preferences of similar users to make recom
 An example implementation using Python and the `Surprise` library can be found [here](collaborative_filtering.py).
 
 
-### Association Rule Mining
-Association rule mining identifies relationships between items based on user transactions.
+### Association Rule Mining (ARM)
+Association rule mining identifies relationships between items based on user transactions. Compared to the above method, which rely on similarity, ARM can be beneficial for cross-selling activities.
 - **Advantages**:
   - Can uncover hidden patterns in data.
   - Useful for market basket analysis.
