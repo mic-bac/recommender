@@ -217,10 +217,6 @@ ils_jumanji = calculate_intra_list_similarity(jumanji_recs)
 print(f"\nIntra-List Similarity for 'Jumanji (1995)' recommendations: {ils_jumanji:.4f}")
 print("A lower score indicates more diverse recommendations.")
 
-
-// ...existing code...
-print("\nThis means that {:.0f}% of the recommendations were relevant to the user, and we were able to recall {:.0f}% of all their favorite movies.".format(precision*100, recall*100))
-
 # %% [markdown]
 # ## 5. Getting Recommendations for a User Profile
 # We can extend the recommendation logic to handle a user's history, where different movies might have different levels of importance. The following function takes a list of movie titles and corresponding weights to create a "user profile" vector. It then recommends movies based on this aggregated profile.
