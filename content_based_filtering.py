@@ -12,6 +12,7 @@
 # %%
 # Import necessary libraries
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import PCA
@@ -215,6 +216,80 @@ print(jumanji_recs)
 ils_jumanji = calculate_intra_list_similarity(jumanji_recs)
 print(f"\nIntra-List Similarity for 'Jumanji (1995)' recommendations: {ils_jumanji:.4f}")
 print("A lower score indicates more diverse recommendations.")
+
+
+// ...existing code...
+print("\nThis means that {:.0f}% of the recommendations were relevant to the user, and we were able to recall {:.0f}% of all their favorite movies.".format(precision*100, recall*100))
+
+# %% [markdown]
+# ## 5. Getting Recommendations for a User Profile
+# We can extend the recommendation logic to handle a user's history, where different movies might have different levels of importance. The following function takes a list of movie titles and corresponding weights to create a "user profile" vector. It then recommends movies based on this aggregated profile.
+
+# %%
+
+# Create this mapping once to avoid re-creating it on every function call
+title_to_idx = pd.Series(movies_df.index, index=movies_df['title'])
+
+def get_recommendations_for_user_profile(titles, weights, title_to_idx, movies_df, tfidf_matrix, top_n=10):
+    """
+    Recommends movies based on a weighted list of user's favorite movies.
+    
+    Args:
+        titles (list): A list of movie titles.
+        weights (list): A list of weights corresponding to each movie.
+        title_to_idx (pd.Series): A mapping from movie titles to their indices.
+        movies_df (pd.DataFrame): The DataFrame of movies.
+        tfidf_matrix (scipy.sparse.matrix): The TF-IDF matrix of movie genres.
+        top_n (int): The number of recommendations to return.
+        
+    Returns:
+        A pandas Series of recommended movie titles, or an error string.
+    """
+    if len(titles) != len(weights):
+        return "Error: 'titles' and 'weights' lists must have the same length."
+
+    # Get indices of input movies, skipping those not found
+    movie_indices = [title_to_idx[title] for title in titles if title in title_to_idx]
+    
+    if not movie_indices:
+        return "Error: None of the provided movies were found."
+
+    # Calculate the weighted average of the movie vectors
+    # This operates efficiently on the sparse matrix
+    user_profile_vector = np.average(tfidf_matrix[movie_indices], axis=0, weights=weights)
+
+    # Calculate cosine similarity between the user profile and all movies
+    cosine_similarities = cosine_similarity(user_profile_vector, tfidf_matrix)
+    
+    # Get similarity scores as a pandas Series
+    sim_scores = pd.Series(cosine_similarities[0], index=movies_df.index)
+    
+    # Drop the input movies from the recommendations
+    sim_scores = sim_scores.drop(movie_indices)
+    
+    # Return the top N most similar movies
+    return movies_df['title'].loc[sim_scores.nlargest(top_n).index]
+
+# %% [markdown]
+# ### Test the User Profile Recommendation System
+# Let's test the function with a sample user profile. We'll give a higher weight to an animated movie and a lower weight to an action movie to see how it influences the recommendations.
+
+# %%
+# Example: User likes 'Toy Story (1995)' a lot, and 'Jumanji (1995)' a little.
+user_movies = ['Toy Story (1995)', 'Jumanji (1995)']
+user_weights = [1.0, 0.5]
+
+profile_recs = get_recommendations_for_user_profile(
+    user_movies, 
+    user_weights, 
+    title_to_idx=title_to_idx, 
+    movies_df=movies_df, 
+    tfidf_matrix=tfidf_matrix
+)
+
+print(f"Recommendations for a user who likes '{user_movies[0]}' (weight={user_weights[0]}) and '{user_movies[1]}' (weight={user_weights[1]}):")
+print(profile_recs)
+
 
 # %% [markdown]
 # ### Precision and Recall @k
