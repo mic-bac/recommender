@@ -3,7 +3,8 @@
 
 # %% [markdown]
 # ## Introduction
-# This notebook demonstrates content-based filtering, a type of recommender system that suggests items based on their attributes. We will use a dataset of movies and their genres to build a system that recommends movies similar to a user's choice.
+# This notebook demonstrates content-based filtering, a type of recommender system that suggests items based on their attributes. 
+# We will use a dataset of movies and their genres to build a system that recommends movies similar to a user's choice.
 # 
 # We will cover two main parts:
 # 1.  **Calculate**: Using TF-IDF to represent movie genres and Cosine Similarity to find similar movies.
@@ -16,8 +17,8 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 import plotly.express as px
-import plotly.graph_objects as go
 
 # %% [markdown]
 # ## 1. Load and Prepare the Data
@@ -31,12 +32,9 @@ movies_df = pd.read_csv('data/movie/movies.csv')
 print("Original Movies DataFrame:")
 print(movies_df.head())
 
-# For this content-based filter, we only need the movieId, title, and genres.
-movies_df = movies_df[['movieId', 'title', 'genres']]
-
 # The genres are listed as a string with '|' as a separator. 
 # We will replace the '|' with spaces to treat the genres as a single string of words.
-movies_df['genres'] = movies_df['genres'].str.replace('|', ' ', regex=True)
+movies_df['genres'] = movies_df['genres'].str.replace('|', ' ', regex=False)
 
 # Display the first few rows of the modified dataframe
 print("\nModified Movies DataFrame:")
@@ -47,7 +45,8 @@ print(movies_df.head())
 
 # %% [markdown]
 # ### TF-IDF Vectorization
-# We will use Term Frequency-Inverse Document Frequency (TF-IDF) to convert the text-based genre data into a numerical format that can be used for calculations. Each movie's genres will be represented as a vector.
+# We will use Term Frequency-Inverse Document Frequency (TF-IDF) to convert the text-based genre data into a numerical 
+# format that can be used for calculations. Each movie's genres will be represented as a vector.
 
 # %%
 # Initialize the TF-IDF Vectorizer
@@ -60,10 +59,12 @@ tfidf_matrix = tfidf_vectorizer.fit_transform(movies_df['genres'])
 # The tfidf_matrix is a sparse matrix where each row represents a movie and each column represents a genre term.
 print("\nShape of TF-IDF Matrix:")
 print(tfidf_matrix.shape)
+print(tfidf_matrix[:3, :3].toarray()) # first 3x3
 
 # %% [markdown]
 # ### Cosine Similarity
-# Now that we have the TF-IDF matrix, we can calculate the cosine similarity between all pairs of movies. The resulting matrix will show how similar each movie is to every other movie.
+# Now that we have the TF-IDF matrix, we can calculate the cosine similarity between all pairs of movies. 
+# The resulting matrix will show how similar each movie is to every other movie.
 
 # %%
 # Calculate the cosine similarity matrix
@@ -71,6 +72,7 @@ cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
 
 print("\nShape of Cosine Similarity Matrix:")
 print(cosine_sim.shape)
+print(cosine_sim[:3, :3]) # first 3x3
 
 # %% [markdown]
 # ### Create a Recommendation Function
@@ -78,7 +80,7 @@ print(cosine_sim.shape)
 
 # %%
 # Create a function to get movie recommendations
-def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df):
+def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df, return_input=True):
     # Get the index of the movie that matches the title
     try:
         idx = movies_df[movies_df['title'] == title].index[0]
@@ -87,15 +89,21 @@ def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df):
 
     # Get the pairwise similarity scores of all movies with that movie
     sim_scores = list(enumerate(cosine_sim[idx]))
+    # remove base item
+    del sim_scores[idx]
 
     # Sort the movies based on the similarity scores
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
 
     # Get the scores of the 10 most similar movies
-    sim_scores = sim_scores[1:11]
+    sim_scores = sim_scores[:10]
 
     # Get the movie indices
     movie_indices = [i[0] for i in sim_scores]
+
+    # For demonstrational purposes we can return the input too
+    if return_input:
+        movie_indices.insert(0, idx)
 
     # Return the top 10 most similar movies
     return movies_df['title'].iloc[movie_indices]
@@ -109,18 +117,39 @@ def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df):
 print("\nRecommendations for 'Toy Story (1995)':")
 print(get_recommendations('Toy Story (1995)'))
 
-# Get recommendations for 'Jumanji (1995)'
-print("\nRecommendations for 'Jumanji (1995)':")
-print(get_recommendations('Jumanji (1995)'))
+# Get recommendations for 'The Lego Movie (2014)'
+print("\nRecommendations for 'The Lego Movie (2014)':")
+print(get_recommendations('The Lego Movie (2014)'))
+
+# Get recommendations for 'X-Men (2000)'
+print("\nRecommendations for 'X-Men (2000)':")
+print(get_recommendations('X-Men (2000)'))
 
 # %% [markdown]
 # ## 3. Visualize: Visualizing Movie Similarities
-# To better understand the relationships between movies, we can visualize the TF-IDF vectors in a 2D space. We'll use Principal Component Analysis (PCA) to reduce the dimensionality of the TF-IDF matrix.
+# To better understand the relationships between movies, we can visualize the TF-IDF vectors in a 2D space. 
+# We'll use Principal Component Analysis (PCA) and t-SNE to reduce the dimensionality of the TF-IDF matrix.
+#
+# | Aspect                | PCA                                                                 | t-SNE                                                                       |
+# |-----------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------|
+# | **Type**              | Linear dimensionality reduction                                     | Nonlinear dimensionality reduction                                          |
+# | **How it works**      | Projects data onto directions of maximum variance                   | Preserves local neighborhood structure by minimizing KL divergence          |
+# | **Pros**              | Fast, deterministic, easy to interpret                              | Captures complex nonlinear patterns, great for visualizing clusters         |
+# | **Cons**              | Only captures linear relationships, may miss complex structures     | Computationally expensive, sensitive to hyperparameters, less interpretable |
+
 
 # %%
-# Reduce the dimensionality of the TF-IDF matrix using PCA
-pca = PCA(n_components=2)
-tfidf_matrix_2d = pca.fit_transform(tfidf_matrix.toarray())
+# Choose between PCA and TSNE - could be interesting
+use_dim_red = "tsne"
+
+if use_dim_red == "pca":
+    # Reduce the dimensionality of the TF-IDF matrix using PCA
+    pca = PCA(n_components=2)
+    tfidf_matrix_2d = pca.fit_transform(tfidf_matrix.toarray())
+if use_dim_red == "tsne":
+    # Reduce TF-IDF matrix to 2D using t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+    tfidf_matrix_2d = tsne.fit_transform(tfidf_matrix.toarray())
 
 # Create a new DataFrame for the 2D data
 movies_2d_df = pd.DataFrame(tfidf_matrix_2d, columns=['x', 'y'])
@@ -129,19 +158,40 @@ movies_2d_df['genres'] = movies_df['genres']
 
 # %% [markdown]
 # ### Interactive 2D Plot with Plotly
-# Now, we'll create an interactive scatter plot using Plotly. You can hover over the points to see the movie titles and genres.
+# Now, we'll create an interactive scatter plot using Plotly. 
+# You can hover over the points to see the movie titles and genres.
 
 # %%
+# Create a new color column (default all points to grey)
+color_discrete_map = {'darkgrey': 'darkgrey', 'red': 'red'}
+movies_2d_df["custom_color"] = "darkgrey"
+
+# Assign custom colors for specific indices
+movies_2d_df.loc[0, "custom_color"] = "red"      # Toy Story (1995)
+movies_2d_df.loc[8357, "custom_color"] = "red"   # The Lego Movie (2014)
+movies_2d_df.loc[2836, "custom_color"] = "red"   # X-Men (2000)
+
+# Add jitter: small random noise for better visibility due to many overlapping cases
+jitter_strength = 0.1  # Adjust the amount of jitter
+movies_2d_df['x_jitter'] = movies_2d_df['x'] + np.random.uniform(-jitter_strength, jitter_strength, size=len(movies_2d_df))
+movies_2d_df['y_jitter'] = movies_2d_df['y'] + np.random.uniform(-jitter_strength, jitter_strength, size=len(movies_2d_df))
+
+# sorted to have movies of interest on top of dots
+movies_2d_df_sorted = movies_2d_df.sort_values("custom_color", axis=0, ignore_index=True)
+
 # Create an interactive scatter plot
-fig = px.scatter(movies_2d_df, x='x', y='y',
+fig = px.scatter(movies_2d_df, 
+                 x='x_jitter', y='y_jitter',
                  hover_name='title',
                  hover_data=['genres'],
-                 title='2D Representation of Movies based on Genres (TF-IDF + PCA)')
+                 color="custom_color",
+                 color_discrete_map=color_discrete_map,
+                 title=f'2D Representation of Movies based on Genres (TF-IDF + {use_dim_red})')
 
 # Improve the layout
 fig.update_layout(
-    xaxis_title="PCA Component 1",
-    yaxis_title="PCA Component 2",
+    xaxis_title=f"{use_dim_red} dimension 1",
+    yaxis_title=f"{use_dim_red} dimension 2",
     title={
         'text': "2D Representation of Movies based on Genres",
         'y':0.95,
@@ -154,12 +204,16 @@ fig.update_layout(
 # Show the plot
 fig.show()
 
+
 # %% [markdown]
 # ## 4. Evaluation
-# To evaluate our content-based recommender, we can measure the diversity of the recommendations. A good recommender should not only be accurate but also provide a diverse set of items.
+# To evaluate our content-based recommender, we can measure the diversity of the recommendations. 
+# A good recommender should not only be accurate but also provide a diverse set of items.
 # 
 # ### Intra-List Similarity
-# Intra-list similarity measures how similar the recommended items are to each other. A lower value means the recommendations are more diverse. We calculate it by averaging the cosine similarity between all pairs of items in the recommendation list.
+# Intra-list similarity measures how similar the recommended items are to each other. 
+# A lower value means the recommendations are more diverse. 
+# We calculate it by averaging the cosine similarity between all pairs of items in the recommendation list.
 
 # %%
 def calculate_intra_list_similarity(recommendations, cosine_sim=cosine_sim, movies_df=movies_df):

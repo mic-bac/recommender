@@ -8,4 +8,6 @@ dependencies:
   - numpy
   - scikit-learn
   - plotly
+  - nbformat
   - ipykernel
+#conda env create -f conda_env.yaml
