@@ -115,7 +115,9 @@ def get_recommendations(title, cosine_sim=cosine_sim, movies_df=movies_df, retur
 # %%
 # Get recommendations for 'Toy Story (1995)'
 print("\nRecommendations for 'Toy Story (1995)':")
-print(get_recommendations('Toy Story (1995)'))
+toy_rec = get_recommendations('Toy Story (1995)')
+print(movies_df.loc[toy_rec.index])
+
 
 # Get recommendations for 'The Lego Movie (2014)'
 print("\nRecommendations for 'The Lego Movie (2014)':")
@@ -256,6 +258,7 @@ print(toy_story_recs)
 ils_toy_story = calculate_intra_list_similarity(toy_story_recs)
 print(f"\nIntra-List Similarity for 'Toy Story (1995)' recommendations: {ils_toy_story:.4f}")
 print("A lower score indicates more diverse recommendations.")
+print(movies_df.loc[toy_story_recs.index])
 
 # %% [markdown]
 # ### Evaluate Recommendations for 'Jumanji (1995)'
@@ -306,10 +309,14 @@ def get_recommendations_for_user_profile(titles, weights, title_to_idx, movies_d
 
     # Calculate the weighted average of the movie vectors
     # This operates efficiently on the sparse matrix
-    user_profile_vector = np.average(tfidf_matrix[movie_indices], axis=0, weights=weights)
+    user_profile_vector = np.average(
+            tfidf_matrix[movie_indices].toarray(), 
+            axis=0, 
+            weights=weights
+    )
 
     # Calculate cosine similarity between the user profile and all movies
-    cosine_similarities = cosine_similarity(user_profile_vector, tfidf_matrix)
+    cosine_similarities = cosine_similarity(user_profile_vector.reshape(1, -1), tfidf_matrix)
     
     # Get similarity scores as a pandas Series
     sim_scores = pd.Series(cosine_similarities[0], index=movies_df.index)
@@ -330,8 +337,8 @@ user_movies = ['Toy Story (1995)', 'Jumanji (1995)']
 user_weights = [1.0, 0.5]
 
 profile_recs = get_recommendations_for_user_profile(
-    user_movies, 
-    user_weights, 
+    titles=user_movies, 
+    weights=user_weights, 
     title_to_idx=title_to_idx, 
     movies_df=movies_df, 
     tfidf_matrix=tfidf_matrix
@@ -340,80 +347,12 @@ profile_recs = get_recommendations_for_user_profile(
 print(f"Recommendations for a user who likes '{user_movies[0]}' (weight={user_weights[0]}) and '{user_movies[1]}' (weight={user_weights[1]}):")
 print(profile_recs)
 
-
-# %% [markdown]
-# ### Precision and Recall @k
-# To calculate precision and recall, we need a "ground truth" of relevant items for a user. We will simulate this by using the `ratings.csv` dataset.
-# 
-# - **Precision@k**: What percentage of our top-k recommendations are relevant to the user?
-# - **Recall@k**: What percentage of all the user's relevant items did we recommend in our top-k list?
-# 
-# **A Note on Accuracy**: Accuracy is not a good metric for top-N recommender systems. A recommender suggests a small number of items from a very large pool. If we treated all non-recommended items as "correctly not recommended" (true negatives), we would get a very high but misleading accuracy score. Therefore, we focus on precision and recall.
-
-# %%
-# Load the ratings dataset to get user preferences
-ratings_df = pd.read_csv('data/movie/ratings.csv')
-print("\nRatings DataFrame:")
-print(ratings_df.head())
-
-# %% [markdown]
-# #### Simulating a User for Evaluation
-# We will select a sample user and use their highly-rated movies as the ground truth. We'll then take one of their favorite movies, generate recommendations for it, and see how many of the other favorites we can predict.
-
-# %%
-# Let's pick a sample user (e.g., user with userId = 1)
-user_id = 1
-user_ratings = ratings_df[ratings_df['userId'] == user_id]
-
-# Get the movies this user has rated highly (e.g., rating >= 4.0)
-relevant_movies = user_ratings[user_ratings['rating'] >= 4.0]
-
-# Merge with movies_df to get titles
-relevant_movies_titles = movies_df.merge(relevant_movies, on='movieId')['title']
-
-# Let's use one of the user's favorite movies as a seed for recommendations
-# We'll pick the first one from their list
-seed_movie_title = relevant_movies_titles.iloc[0]
-
-print(f"\nSeed movie for user {user_id}: '{seed_movie_title}'")
-print(f"\nUser {user_id}'s other favorite movies (ground truth):")
-# The ground truth is all relevant movies except the seed movie itself
-ground_truth = set(relevant_movies_titles) - {seed_movie_title}
-print(ground_truth)
-
-
-# %%
-# Get recommendations for the seed movie
-recommendations = get_recommendations(seed_movie_title)
-print(f"\nTop 10 recommendations for '{seed_movie_title}':")
-print(recommendations.tolist())
-
-# %%
-def calculate_precision_recall(recommendations, ground_truth):
-    """
-    Calculates Precision@k and Recall@k.
-    """
-    # Convert recommendations to a set for faster intersection
-    rec_set = set(recommendations)
-    
-    # Calculate the number of relevant items in the recommendations
-    true_positives = len(rec_set.intersection(ground_truth))
-    
-    # Precision@k = (True Positives) / (Number of Recommendations)
-    precision = true_positives / len(rec_set) if rec_set else 0.0
-    
-    # Recall@k = (True Positives) / (Total Number of Relevant Items)
-    recall = true_positives / len(ground_truth) if ground_truth else 0.0
-    
-    return precision, recall
-
-# Calculate and print precision and recall
-precision, recall = calculate_precision_recall(recommendations, ground_truth)
-print(f"\nPrecision@10: {precision:.4f}")
-print(f"Recall@10: {recall:.4f}")
-print("\nThis means that {:.0f}% of the recommendations were relevant to the user, and we were able to recall {:.0f}% of all their favorite movies.".format(precision*100, recall*100))
-
 # %% [markdown]
 # ## Conclusion
-# This notebook provided a step-by-step guide to building a content-based filtering recommender system. We used TF-IDF and cosine similarity to find similar movies and visualized the results using PCA and Plotly. This approach can be extended by incorporating more features (like actors, directors) or by using more advanced techniques for feature representation.
-# We also added evaluation metrics, including intra-list similarity to assess diversity, and precision and recall to measure the relevance of our recommendations.
+# This notebook provided a step-by-step guide to building a content-based 
+# filtering recommender system. We used TF-IDF and cosine similarity to find 
+# similar movies and visualized the results using PCA, t-SNE and Plotly. 
+# This approach can be extended by incorporating more features (like actors, directors) 
+# or by using more advanced techniques for feature representation.
+# We also added evaluation metrics, including intra-list similarity 
+# to assess diversity of our recommendations.
