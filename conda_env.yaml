@@ -8,6 +8,7 @@ dependencies:
   - numpy
   - scikit-learn
   - scikit-surprise
+  - mlxtend
   - plotly
   - nbformat
   - ipykernel
