@@ -1,0 +1,22 @@
+[project]
+name = "recommender"
+version = "0.1.0"
+description = "Recommender-system teaching examples."
+requires-python = ">=3.13"
+dependencies = [
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "scikit-surprise",  # Cython/C build; needs a compiler if no wheel is available
+    "mlxtend",
+    "plotly",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel",
+    "nbformat",
+]
+
+[tool.uv]
+package = false
