@@ -168,10 +168,12 @@ movies_2d_df['genres'] = movies_df['genres']
 color_discrete_map = {'darkgrey': 'darkgrey', 'red': 'red'}
 movies_2d_df["custom_color"] = "darkgrey"
 
-# Assign custom colors for specific indices
-movies_2d_df.loc[0, "custom_color"] = "red"      # Toy Story (1995)
-movies_2d_df.loc[8357, "custom_color"] = "red"   # The Lego Movie (2014)
-movies_2d_df.loc[2836, "custom_color"] = "red"   # X-Men (2000)
+# Highlight a few movies of interest. We look them up *by title* rather than by
+# a hardcoded row number, so the highlighting stays correct even if the dataset
+# is re-ordered or updated.
+highlight_titles = ['Toy Story (1995)', 'The Lego Movie (2014)', 'X-Men (2000)']
+highlight_mask = movies_2d_df['title'].isin(highlight_titles)
+movies_2d_df.loc[highlight_mask, "custom_color"] = "red"
 
 # Add jitter: small random noise for better visibility due to many overlapping cases
 jitter_strength = 0.1  # Adjust the amount of jitter

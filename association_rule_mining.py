@@ -156,11 +156,11 @@ print(f"Number of frequent itemsets: {len(frequent_itemsets_apriori)}")
 print(f"Itemsets by size:")
 print(frequent_itemsets_apriori['itemset_size'].value_counts().sort_index())
 print(f"\nTop 10 (1-)itemsets by support:")
-display(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 1].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 1].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 print(f"\nTop 10 (2-)itemsets by support:")
-display(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 2].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 2].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 print(f"\nTop 10 (3-)itemsets by support:")
-display(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 3].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_apriori[frequent_itemsets_apriori['itemset_size'] == 3].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 
 
 # %% 5. FP-GROWTH ALGORITHM
@@ -209,11 +209,11 @@ print(f"Number of frequent itemsets: {len(frequent_itemsets_fpgrowth)}")
 print(f"Itemsets by size:")
 print(frequent_itemsets_fpgrowth['itemset_size'].value_counts().sort_index())
 print(f"\nTop 10 (1-)itemsets by support:")
-display(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 1].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 1].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 print(f"\nTop 10 (2-)itemsets by support:")
-display(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 2].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 2].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 print(f"\nTop 10 (3-)itemsets by support:")
-display(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 3].nlargest(10, 'support')[['itemsets', 'support']])
+print(frequent_itemsets_fpgrowth[frequent_itemsets_fpgrowth['itemset_size'] == 3].nlargest(10, 'support')[['itemsets', 'support']].to_string(index=False))
 
 
 # %% 6. ALGORITHM COMPARISON
@@ -295,6 +295,58 @@ if len(rules_apriori) > 0:
 else:
     print("⚠️  No rules generated with current thresholds")
     rules_apriori = pd.DataFrame()
+
+
+# %% 7b. TURNING RULES INTO A RECOMMENDER
+# =============================================================================
+"""
+FROM RULES TO RECOMMENDATIONS:
+"Customers who bought X also bought Y."
+
+Given an item a customer just added to their basket, we look up every rule whose
+antecedent (the "if" side) contains that item, and recommend the consequents
+(the "then" side). We rank the suggestions by lift (associations strongest beyond
+chance) and then confidence (most reliable), which is the non-personalized,
+transaction-based recommendation described in the lecture.
+"""
+
+def get_basket_recommendations(item, rules=rules_apriori, top_n=5):
+    """Recommend items frequently bought together with `item`.
+
+    Args:
+        item: the product already in the basket (e.g. 'whole milk').
+        rules: an association-rules DataFrame (from `association_rules`).
+        top_n: how many recommendations to return.
+
+    Returns:
+        A DataFrame of recommended items with the rule's support/confidence/lift,
+        or an informative string if nothing matches.
+    """
+    if rules is None or len(rules) == 0:
+        return "No association rules available — run rule generation first."
+
+    # Keep rules where the antecedent contains the basket item.
+    matches = rules[rules['antecedents'].apply(lambda a: item in a)].copy()
+    if matches.empty:
+        return f"No rules found with '{item}' on the antecedent side."
+
+    # The recommendation is the consequent (the "then" side) of each matching rule.
+    matches['recommendation'] = matches['consequents'].apply(lambda c: ', '.join(sorted(c)))
+
+    # Rank by strength (lift) then reliability (confidence), de-duplicating items.
+    matches = matches.sort_values(['lift', 'confidence'], ascending=False)
+    matches = matches.drop_duplicates(subset='recommendation')
+
+    return matches[['recommendation', 'support', 'confidence', 'lift']].head(top_n)
+
+
+# %%
+# Example: what should we suggest to someone buying 'whole milk'?
+print("\n" + "="*80)
+print("BASKET RECOMMENDATIONS: items bought together with 'whole milk'")
+print("="*80)
+milk_recs = get_basket_recommendations('whole milk')
+print(milk_recs if isinstance(milk_recs, str) else milk_recs.to_string(index=False))
 
 
 # %% 8. VISUALIZATION: ITEMSET SUPPORT DISTRIBUTION
