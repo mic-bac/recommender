@@ -75,7 +75,17 @@ print(user_sim_df.iloc[:5, :5])
 
 # %%
 def get_user_based_recommendations(user_id, user_item_matrix, user_sim_df,
-                                   num_recommendations=10, k_neighbors=10):
+                                   num_recommendations=10, k_neighbors=30, min_neighbors=5):
+    """Similarity-weighted average of the neighbours' ratings, per unseen movie.
+
+    ``min_neighbors`` is the guard that makes the output believable. Without it,
+    a movie rated by a SINGLE neighbour who happened to give it 5 stars scores a
+    perfect 5.0 — and the top of the list fills with obscure films tied at 5.0,
+    in arbitrary order. That is the sparsity problem from the slides, live: an
+    average over one opinion is not evidence. Requiring several neighbours to
+    agree trades a little coverage for recommendations you can defend, which is
+    also why we look at 30 neighbours rather than 10 — more voters per movie.
+    """
     # Get the k most similar users, excluding the user themselves
     # (position 0 is the user, with similarity 1.0).
     similar_users = user_sim_df[user_id].sort_values(ascending=False).iloc[1:k_neighbors + 1]
@@ -92,14 +102,23 @@ def get_user_based_recommendations(user_id, user_item_matrix, user_sim_df,
     rated_mask = neighbor_ratings.notna()
     weighted_sum = (neighbor_ratings.fillna(0) * weights).sum(axis=0)
     weight_totals = (rated_mask * weights).sum(axis=0)
-    recommendation_scores = weighted_sum / weight_totals.replace(0, np.nan)
+    neighbors_who_rated = rated_mask.sum(axis=0)
 
-    # Drop movies the active user has already rated, keep the best of the rest.
+    recommendations = pd.DataFrame({
+        'score': weighted_sum / weight_totals.replace(0, np.nan),
+        'neighbors_who_rated': neighbors_who_rated,
+    })
+
+    # Drop movies the active user has already rated, and movies too few
+    # neighbours have an opinion on (see the docstring).
     user_rated_movies = user_item_matrix.loc[user_id].dropna().index
-    recommendation_scores = recommendation_scores.drop(user_rated_movies, errors='ignore')
+    recommendations = recommendations.drop(user_rated_movies, errors='ignore')
+    recommendations = recommendations[recommendations['neighbors_who_rated'] >= min_neighbors]
 
-    # Return the top N recommended movies
-    return recommendation_scores.nlargest(num_recommendations)
+    # Best score first; among equal scores, the one more neighbours vouch for.
+    return recommendations.sort_values(
+        ['score', 'neighbors_who_rated'], ascending=False
+    ).head(num_recommendations)
 
 # %%
 # Get recommendations for user 1
@@ -313,13 +332,19 @@ class MatrixFactorization:
                       f"{rmse(train_pred, vals):.4f}")
         return self
 
-    def predict(self, users, items):
-        """Vectorized prediction for arrays of user/item indices."""
+    def predict(self, users, items, clip=True):
+        """Vectorized prediction for arrays of user/item indices.
+
+        ``clip=True`` caps predictions to the valid 0.5-5 star range — right for
+        measuring RMSE against real ratings. For RANKING use ``clip=False``: a
+        generous rater's favourites can all score above 5, and capping them would
+        tie them at exactly 5.0 and throw the model's ordering away.
+        """
         users = np.asarray(users, dtype=int)
         items = np.asarray(items, dtype=int)
         dot = np.einsum('ij,ij->i', self.p[users], self.q[items])
         preds = self.mu + self.b_u[users] + self.b_i[items] + dot
-        return np.clip(preds, 0.5, 5.0)
+        return np.clip(preds, 0.5, 5.0) if clip else preds
 
 
 # %%
@@ -352,16 +377,18 @@ def get_mf_recommendations(user_id, model, movies_df, ratings_df,
     candidate_items = [item_to_idx[iid] for iid in item_to_idx
                        if iid not in rated_movie_ids]
 
-    # Score all candidates in one vectorized pass and take the top N.
-    preds = model.predict(np.full(len(candidate_items), u), np.array(candidate_items))
-    top_local = np.argsort(preds)[::-1][:num_recommendations]
+    # Score all candidates in one vectorized pass and RANK on the uncapped score
+    # (see MatrixFactorization.predict); show the capped one as the star rating.
+    scores = model.predict(np.full(len(candidate_items), u), np.array(candidate_items), clip=False)
+    top_local = np.argsort(scores)[::-1][:num_recommendations]
     top_movie_ids = [idx_to_item[candidate_items[k]] for k in top_local]
 
     recs = movies_df[movies_df['movieId'].isin(top_movie_ids)][['movieId', 'title', 'genres']].copy()
-    # Preserve the ranking order and attach the predicted rating.
-    pred_by_id = {idx_to_item[candidate_items[k]]: preds[k] for k in top_local}
-    recs['predicted_rating'] = recs['movieId'].map(pred_by_id)
-    return recs.sort_values('predicted_rating', ascending=False)[['title', 'genres', 'predicted_rating']]
+    score_by_id = {idx_to_item[candidate_items[k]]: scores[k] for k in top_local}
+    recs['model_score'] = recs['movieId'].map(score_by_id)
+    recs['predicted_rating'] = recs['model_score'].clip(0.5, 5.0)
+    return recs.sort_values('model_score', ascending=False)[
+        ['title', 'genres', 'predicted_rating', 'model_score']]
 
 
 # %%
@@ -377,7 +404,7 @@ print(df[df["userId"] == 1].sort_values("rating", ascending=False).head())
 # ## 6. Visualize: Movie Latent Factors
 # The matrix-factorization model learns a latent-factor vector `q_i` for every
 # movie. Movies that sit close together in this space are treated as similar *based
-# on how people rated them* — no genre labels required. We reduce the 50-D factors
+# on how people rated them* — no genre labels required. We reduce the 20-D factors
 # to 2D with PCA (fast, deterministic) or t-SNE (better clusters) to see this
 # "taste space".
 

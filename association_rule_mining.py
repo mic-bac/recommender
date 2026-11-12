@@ -14,7 +14,10 @@ Key Concepts:
 - Confidence: Likelihood of B given A (IF → THEN strength)
 - Lift: How much more likely B occurs given A (Independence measure)
 
-Dataset: Groceries - Transaction data from a grocery store
+Dataset: Groceries - Transaction data from a grocery store (Kaggle download).
+If the file is missing, src/groceries_data.py generates synthetic baskets in the
+same format with *planted* shopping missions — so you can check whether Apriori
+recovers associations that are known to be there.
 """
 
 # %% 1. ENVIRONMENT SETUP & DATA LOADING
@@ -25,11 +28,21 @@ from mlxtend.preprocessing import TransactionEncoder
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
+import sys
+from pathlib import Path
 
-# Load the groceries dataset
-# Expected format: CSV with transactions (comma-separated items per row)
+# Make `src/` importable no matter where this script is launched from.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from src.groceries_data import PLANTED_MISSIONS, load_groceries  # noqa: E402
+
+# Load the groceries dataset (long format: one row per member, date and item).
+# Falls back to synthetic baskets with known associations if the CSV is missing.
 print("📦 Loading Groceries Dataset...")
-df = pd.read_csv('./data/groceries/Groceries_dataset.csv')
+df, GROCERIES_SOURCE = load_groceries()
+if GROCERIES_SOURCE == "synthetic":
+    print("⚠️  Groceries_dataset.csv not found — using SYNTHETIC baskets with planted missions:")
+    for mission, (items, _, _) in PLANTED_MISSIONS.items():
+        print(f"     {mission:<12} {', '.join(items)}")
 # We create an Invoice column to have all purchases grouped by receipt (assumption for bought together)
 df["Invoice"] = df["Member_number"].astype(str) + df["Date"]
 
@@ -304,10 +317,15 @@ FROM RULES TO RECOMMENDATIONS:
 "Customers who bought X also bought Y."
 
 Given an item a customer just added to their basket, we look up every rule whose
-antecedent (the "if" side) contains that item, and recommend the consequents
+antecedent (the "if" side) is exactly that item, and recommend the consequents
 (the "then" side). We rank the suggestions by lift (associations strongest beyond
 chance) and then confidence (most reliable), which is the non-personalized,
 transaction-based recommendation described in the lecture.
+
+Only rules with lift > 1 are used. Lift <= 1 means the two items appear together
+as often as chance predicts or LESS — a negative association. A popular item like
+whole milk produces many high-confidence rules simply because it is in so many
+baskets; lift is the measure that separates "popular" from "related".
 """
 
 def get_basket_recommendations(item, rules=rules_apriori, top_n=5):
@@ -325,10 +343,19 @@ def get_basket_recommendations(item, rules=rules_apriori, top_n=5):
     if rules is None or len(rules) == 0:
         return "No association rules available — run rule generation first."
 
-    # Keep rules where the antecedent contains the basket item.
-    matches = rules[rules['antecedents'].apply(lambda a: item in a)].copy()
+    # Keep rules whose "if" side is EXACTLY this item, and that are a real
+    # (positive) association — lift > 1. A rule like {whole milk, baby food} ->
+    # {baby cosmetics} says nothing about whole milk: milk is just a bystander in
+    # a baby-care basket, and recommending baby cosmetics to every milk buyer
+    # would be nonsense.
+    single = rules['antecedents'].apply(lambda a: a == frozenset({item}))
+    # Suggest single products: a consequent like {baby food, rolls/buns} just drags a
+    # staple along with the real partner.
+    one_item = rules['consequents'].apply(len) == 1
+    matches = rules[single & one_item & (rules['lift'] > 1)].copy()
     if matches.empty:
-        return f"No rules found with '{item}' on the antecedent side."
+        return (f"No positive association (lift > 1) for '{item}' — it is bought about as "
+                "often with everything as chance predicts. Popular is not the same as related.")
 
     # The recommendation is the consequent (the "then" side) of each matching rule.
     matches['recommendation'] = matches['consequents'].apply(lambda c: ', '.join(sorted(c)))
@@ -343,10 +370,18 @@ def get_basket_recommendations(item, rules=rules_apriori, top_n=5):
 # %%
 # Example: what should we suggest to someone buying 'whole milk'?
 print("\n" + "="*80)
-print("BASKET RECOMMENDATIONS: items bought together with 'whole milk'")
+print("BASKET RECOMMENDATIONS: items bought together with ...")
 print("="*80)
-milk_recs = get_basket_recommendations('whole milk')
-print(milk_recs if isinstance(milk_recs, str) else milk_recs.to_string(index=False))
+# 'whole milk' shows what popularity alone gets you; the second item is whichever
+# one has the strongest single-item rule in THIS data. On the real receipts the
+# best lift is modest (~1.6 — real baskets are noisy); on the synthetic data the
+# planted missions stand out at lift 5-20.
+single_item_rules = rules_apriori[rules_apriori['antecedents'].apply(len) == 1] if len(rules_apriori) else rules_apriori
+strongest = next(iter(single_item_rules.nlargest(1, 'lift')['antecedents'].iloc[0])) if len(single_item_rules) else 'whole milk'
+for basket_item in dict.fromkeys(('whole milk', strongest)):
+    recs = get_basket_recommendations(basket_item)
+    print(f"\n... '{basket_item}':")
+    print(recs if isinstance(recs, str) else recs.to_string(index=False))
 
 
 # %% 8. VISUALIZATION: ITEMSET SUPPORT DISTRIBUTION

@@ -44,6 +44,7 @@ recommender/
 │       ├── movies.csv           # Movie details
 │       └── ratings.csv          # User ratings
 │
+├── src/groceries_data.py         # Groceries loader + synthetic fallback (planted missions)
 ├── content_based_filtering.py     # Movie recommendations using genres
 ├── collaborative_filtering.py     # User and item-based recommendations
 └── association_rule_mining.py     # Market basket analysis
@@ -100,6 +101,12 @@ Source: [Kaggle MovieLens Dataset](https://www.kaggle.com/datasets/gargmanas/mov
 - **Perfect for**: Learning association rule mining
 
 Source: [Kaggle Groceries Dataset](https://www.kaggle.com/datasets/heeraldedhia/groceries-dataset/data)
+
+Not in git — download it into `data/groceries/`. Without it, `association_rule_mining.py`
+falls back to **synthetic baskets** (`src/groceries_data.py`) in the same format, with
+*planted* shopping missions (baking, barbecue, breakfast, pasta night, party, baby care):
+the rules Apriori finds should recover exactly those, while popular staples like whole milk
+come out with lift ≈ 1 — frequent, but not associated.
 
 ## 📈 Evaluation
 The scripts include lightweight, honest evaluation of what each method actually does:
