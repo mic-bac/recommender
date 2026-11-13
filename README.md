@@ -1,4 +1,4 @@
-# 🎯 Practival Recommender Systems
+# 🎯 Practical Recommender Systems
 An educational guide to understanding and implementing recommendation systems, perfect for students in machine learning and data science.
 
 ## 📚 What You'll Learn
@@ -30,7 +30,7 @@ conda activate recommender
 
 3. Or install packages directly with pip:
 ```bash
-pip install pandas numpy scikit-learn surprise mlxtend plotly
+pip install pandas numpy scikit-learn mlxtend plotly
 ```
 
 ## 📂 Project Structure
@@ -44,6 +44,7 @@ recommender/
 │       ├── movies.csv           # Movie details
 │       └── ratings.csv          # User ratings
 │
+├── src/groceries_data.py         # Groceries loader + synthetic fallback (planted missions)
 ├── content_based_filtering.py     # Movie recommendations using genres
 ├── collaborative_filtering.py     # User and item-based recommendations
 └── association_rule_mining.py     # Market basket analysis
@@ -63,23 +64,26 @@ Think of it as "If you like this movie, you'll like similar movies"
 
 ### 2. Collaborative Filtering (`collaborative_filtering.py`)
 Think of it as "People who like what you like also like..."
-- 👥 **User-Based**: Finds users with similar taste
+- 👥 **User-Based**: Finds users with similar taste (similarity-weighted ratings)
 - 🎬 **Item-Based**: Finds similar items based on user ratings
-- 🔢 **Matrix Factorization**: Advanced technique using SVD
+- ⚖️ **Matrix Completion with bias correction**: A baseline predictor `mu + b_u + b_i`
+  that corrects for generous raters and popular movies
+- 🔢 **Matrix Factorization**: Adds learned latent factors on top of the baseline
+  (`mu + b_u + b_i + p_u·q_i`), trained from scratch with SGD — no black-box library
 - 📝 **Example**:
   ```python
   from collaborative_filtering import get_user_based_recommendations
-  recommendations = get_user_based_recommendations(user_id=1)
+  recommendations = get_user_based_recommendations(1, user_item_matrix, user_sim_df)
   ```
 
 ### 3. Association Rule Mining (`association_rule_mining.py`)
 Think of it as "Frequently bought together"
-- 🛒 **Market Basket Analysis**: Discovers shopping patterns
+- 🛒 **Market Basket Analysis**: Discovers shopping patterns (Apriori & FP-Growth)
 - 📊 **Key Metrics**: Support, Confidence, Lift
 - 📝 **Example**:
   ```python
   from association_rule_mining import get_basket_recommendations
-  related_items = get_basket_recommendations('bread')
+  related_items = get_basket_recommendations('whole milk')
   ```
 
 ## 📊 Included Datasets
@@ -98,11 +102,20 @@ Source: [Kaggle MovieLens Dataset](https://www.kaggle.com/datasets/gargmanas/mov
 
 Source: [Kaggle Groceries Dataset](https://www.kaggle.com/datasets/heeraldedhia/groceries-dataset/data)
 
-## 📈 Evaluation & Performance
-Each notebook includes evaluation metrics:
-- 🎯 **Accuracy**: How well do recommendations match user preferences?
-- 📊 **Coverage**: What percentage of items can we recommend?
-- ⚡ **Performance**: How fast can we generate recommendations?
+Not in git — download it into `data/groceries/`. Without it, `association_rule_mining.py`
+falls back to **synthetic baskets** (`src/groceries_data.py`) in the same format, with
+*planted* shopping missions (baking, barbecue, breakfast, pasta night, party, baby care):
+the rules Apriori finds should recover exactly those, while popular staples like whole milk
+come out with lift ≈ 1 — frequent, but not associated.
+
+## 📈 Evaluation
+The scripts include lightweight, honest evaluation of what each method actually does:
+- 🎯 **Accuracy (RMSE)**: The collaborative-filtering script holds out 25% of the
+  ratings and reports test-set RMSE for both the bias baseline and the matrix-
+  factorization model, so you can see the latent factors improve prediction.
+- 🌈 **Diversity (Intra-List Similarity)**: The content-based script measures how
+  similar the recommended items are to each other — a lower score means more
+  diverse suggestions.
 
 ## 🤝 How to Contribute
 1. Fork the repository
